@@ -1,0 +1,42 @@
+pick 80841c4445d Add analyzer support for create/drop/alter publication + subscription
+pick 50df2d3273f Add create subscription implmentation including full logical replication
+pick 0ba22b99a29 check each table privilege on a publisher when ALL TABLES are published
+pick 4f66f807306 update tests and add DQL check for the subscriber
+pick e7b0d7f173e fix integration tests
+pick 3130522140a comment
+pick 8709f5d1074 remove user null check  and rename subscriber to  subscribingUserName
+pick 7ea5aa564da expectedLogMessage restore tabulation
+pick d4c8df46602 Update server/src/test/java/io/crate/replication/logical/action/PublicationsStateActionTest.java
+pick b7722445657 Update server/src/test/java/io/crate/replication/logical/action/PublicationsStateActionTest.java
+pick 36772afbee3 Update server/src/test/java/io/crate/replication/logical/action/PublicationsStateActionTest.java
+pick 97368cadbce Update server/src/main/java/io/crate/replication/logical/action/PublicationsStateAction.java
+pick 9303b6c415e tests comments
+pick 2f5f10799f6 ensure publication owner exists
+pick e7f6c6c166b Ensure subscription owner and subscribing user exists
+pick 6d70661c168 ownership checks on drop user
+pick 58e09694503 remove comment
+
+# Rebase 0af39c183c9..58e09694503 onto 0af39c183c9 (17 commands)
+#
+# Commands:
+# p, pick <commit> = use commit
+# r, reword <commit> = use commit, but edit the commit message
+# e, edit <commit> = use commit, but stop for amending
+# s, squash <commit> = use commit, but meld into previous commit
+# f, fixup <commit> = like "squash", but discard this commit's log message
+# x, exec <command> = run command (the rest of the line) using shell
+# b, break = stop here (continue rebase later with 'git rebase --continue')
+# d, drop <commit> = remove commit
+# l, label <label> = label current HEAD with a name
+# t, reset <label> = reset HEAD to a label
+# m, merge [-C <commit> | -c <commit>] <label> [# <oneline>]
+# .       create a merge commit using the original merge commit's
+# .       message (or the oneline, if no original merge commit was
+# .       specified). Use -c <commit> to reword the commit message.
+#
+# These lines can be re-ordered; they are executed from top to bottom.
+#
+# If you remove a line here THAT COMMIT WILL BE LOST.
+#
+# However, if you remove everything, the rebase will be aborted.
+#
