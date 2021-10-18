@@ -30,7 +30,11 @@ Logical replication is useful for the following use cases:
 - Ensure High Availability if one cluster becomes unavailable.
 
 - Replicating between different major versions of CrateDB via chain of
-  compatible versions. Adjacent major versions are compatible.
+  compatible versions. Adjacent major versions are compatible. Please note that
+  retention setting needed for catching up changes after re-enabling a
+  subscription was introduced in 3.3. If source cluster has version lower than
+  3.3 subscribing cluster should not disable the subscription otherwise it will
+  not get the changes happened in-between.
 
 .. _logical-replication-publication:
 
