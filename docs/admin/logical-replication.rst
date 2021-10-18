@@ -81,12 +81,12 @@ stopped/resumed at any time using the
 :ref:`ALTER SUBSCRIPTION <sql-alter-subscription>` command and removed using
 :ref:`DROP SUBSCRIPTION <sql-drop-subscription>` command.
 
-When a subscription is dropped and recreated, the synchronization information
-is removed. This means that the data has to be resynchronized afterwards.
-
 Published tables must not exist on the subscriber. A cluster cannot subscribe
-to a table on another cluster if it exists already on its side. Only regular
-tables (including partitions) may be the target of replication. For example,
+to a table on another cluster if it exists already on its side, therefore it's
+not possible to drop and re-create a subscription without starting from scratch
+i.e removing all replicated tables.
+
+Only regular tables (including partitions) may be the target of replication. For example,
 you can't replicate a view.
 
 The tables are matched between the publisher and the subscriber using the fully
