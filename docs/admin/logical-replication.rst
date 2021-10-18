@@ -78,7 +78,7 @@ stopped/resumed at any time using the
 :ref:`DROP SUBSCRIPTION <sql-drop-subscription>` command.
 
 When a subscription is dropped and recreated, the synchronization information
-is lost. This means that the data has to be resynchronized afterwards.
+is removed. This means that the data has to be resynchronized afterwards.
 
 Published tables must not exist on the subscriber. A cluster cannot subscribe
 to a table on another cluster if it exists already on its side. Only regular
