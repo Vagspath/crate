@@ -37,13 +37,12 @@ Logical replication is useful for the following use cases:
 Publication
 -----------
 
-A publication is a set of changes generated from a table or a group of tables,
-and might also be described as a replication set.
+A publication is the upstream side of logical replication and it's created on
+the cluster which acts as a data source.
 
-Publications are different from schemas and do not affect how the table is
-accessed. Each table can be added to multiple publications if needed.
-Publications can only contain tables. All operation types
-(INSERT, UPDATE, DELETE) are replicated.
+Each table can be added to multiple publications if needed. Publications can
+only contain tables. All operation types (INSERT, UPDATE, DELETE) are
+replicated.
 
 Every publication can have multiple subscribers.
 
