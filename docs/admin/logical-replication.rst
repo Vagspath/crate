@@ -63,10 +63,13 @@ process on the subscriber cluster. The subscriber cluster behaves in the same
 way as any other CrateDB cluster and can be used as a publisher for other
 clusters by defining its own publications.
 
-A subscriber may have multiple subscriptions if desired. It is possible to
-define multiple subscriptions between a single publisher-subscriber pair, in
-which case care must be taken to ensure that the subscribed publication tables
-don't overlap.
+A cluster can have multiple subscriptions. It is also possible for a cluster to
+have both subscriptions and publications. A cluster cannot subscribe to already
+existing locally table, therefore it is not possible to setup a bi-directional
+replication (both sides subscribing to ALL TABLES leads to a cluster trying to
+replicate its own tables from another cluster). However, 2 clusters still can
+cross subscribe to each other if one cluster subscribes to non-existing locally
+tables of another cluster and vice versa.
 
 A subscription is added using
 :ref:`CREATE SUBSCRIPTION <sql-create-subscription>` command and can be
