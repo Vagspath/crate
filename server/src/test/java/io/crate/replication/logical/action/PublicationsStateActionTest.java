@@ -25,6 +25,9 @@ import io.crate.metadata.RelationName;
 import io.crate.replication.logical.metadata.Publication;
 import io.crate.test.integration.CrateDummyClusterServiceUnitTest;
 import io.crate.testing.SQLExecutor;
+import io.crate.user.Privilege;
+import io.crate.user.User;
+import io.crate.user.UserLookup;
 import org.apache.logging.log4j.Level;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.test.MockLogAppender;
@@ -33,8 +36,14 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Set;
 
+import static io.crate.user.Privilege.Type.READ_WRITE_DEFINE;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.not;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTest {
 
@@ -56,11 +65,21 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
 
     @Test
     public void test_resolve_relation_names_for_all_tables_ignores_table_with_soft_delete_disabled() throws Exception {
+        // Mock user having READ_WRITE_DEFINE privileges on the TABLE doc.t1 but not on doc.t3
+        var user = new User("some_user", Set.of(), Set.of(), null) {
+            @Override
+            public boolean hasPrivilege(Privilege.Type type, Privilege.Clazz clazz, String ident, String defaultSchema) {
+                return (READ_WRITE_DEFINE.contains(type) && clazz.equals(Privilege.Clazz.TABLE) && ident.equals("doc.t1"));
+            }
+        };
+        UserLookup userLookup = mock(UserLookup.class);
+        when(userLookup.findUser(user.name())).thenReturn(user);
         var s = SQLExecutor.builder(clusterService)
             .addTable("CREATE TABLE doc.t1 (id int)")
             .addTable("CREATE TABLE doc.t2 (id int) with (\"soft_deletes.enabled\" = false)")
+            .addTable("CREATE TABLE doc.t3 (id int)")
             .build();
-        var publication = new Publication("some_user", true, List.of());
+        var publication = new Publication(user.name(), true, List.of());
 
         var expectedLogMessage = "Table 'doc.t2' won't be replicated as the required table setting " +
                                  "'soft_deletes.enabled' is set to: false";
@@ -73,9 +92,36 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
 
         var resolvedRelations = PublicationsStateAction.TransportAction.resolveRelationsNames(
             publication,
-            s.schemas()
+            "dummy",
+            s.schemas(),
+            userLookup
         );
         assertThat(resolvedRelations, contains(new RelationName("doc", "t1")));
+        assertThat(resolvedRelations, not(contains(new RelationName("doc", "t3"))));
+        appender.assertAllExpectationsMatched();
+    }
+
+    @Test
+    public void test_publication_owner_not_found_ignores_publication() throws Exception {
+        UserLookup userLookup = mock(UserLookup.class);
+        when(userLookup.findUser("test_user")).thenReturn(null);
+
+        var expectedLogMessage = "Tables of a publication 'test_pub' won't be replicated as the user 'test_user' owning the publication is not found.";
+        appender.addExpectation(new MockLogAppender.SeenEventExpectation(
+            expectedLogMessage,
+            Loggers.getLogger(PublicationsStateAction.class).getName(),
+            Level.WARN,
+            expectedLogMessage
+        ));
+
+        var resolvedRelations = PublicationsStateAction.TransportAction.resolveRelationsNames(
+            new Publication("test_user", true, null),
+            "test_pub",
+            null,
+            userLookup
+        );
+
+        assertThat(resolvedRelations, empty());
         appender.assertAllExpectationsMatched();
     }
 }

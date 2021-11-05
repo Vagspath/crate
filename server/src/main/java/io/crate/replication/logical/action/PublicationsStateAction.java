@@ -28,9 +28,13 @@ import io.crate.metadata.RelationInfo;
 import io.crate.metadata.RelationName;
 import io.crate.metadata.Schemas;
 import io.crate.metadata.doc.DocTableInfo;
+import io.crate.metadata.table.TableInfo;
 import io.crate.replication.logical.LogicalReplicationService;
 import io.crate.replication.logical.exceptions.PublicationUnknownException;
 import io.crate.replication.logical.metadata.Publication;
+import io.crate.user.Privilege;
+import io.crate.user.User;
+import io.crate.user.UserLookup;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionType;
@@ -60,6 +64,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import static io.crate.user.Privilege.Type.READ_WRITE_DEFINE;
+
 public class PublicationsStateAction extends ActionType<PublicationsStateAction.Response> {
 
     public static final String NAME = "internal:crate:replication/logical/publication/state";
@@ -81,6 +87,7 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
 
         private final LogicalReplicationService logicalReplicationService;
         private final Schemas schemas;
+        private final UserLookup userLookup;
 
         @Inject
         public TransportAction(TransportService transportService,
@@ -88,7 +95,8 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                                ThreadPool threadPool,
                                IndexNameExpressionResolver indexNameExpressionResolver,
                                LogicalReplicationService logicalReplicationService,
-                               Schemas schemas) {
+                               Schemas schemas,
+                               UserLookup userLookup) {
             super(Settings.EMPTY,
                   NAME,
                   false,
@@ -99,6 +107,7 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                   Request::new);
             this.logicalReplicationService = logicalReplicationService;
             this.schemas = schemas;
+            this.userLookup = userLookup;
 
             TransportActionProxy.registerProxyAction(transportService, NAME, Response::new);
         }
@@ -128,7 +137,11 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                     return;
                 }
 
-                List<RelationName> relationNamesOfPublication = resolveRelationsNames(publication, schemas);
+                // Case 'allTables = true' requires additional check for user permissions but looked up user can be null
+                // if user got deleted before any subscription for the publication had been started.
+                // TODO: Either drop publication on owner-user removal or add to the warning a message that publication should be deleted.
+                // It actually applies to allTables = false as well, so probably need to move user lookup before resolveRelationsNames call.
+                List<RelationName> relationNamesOfPublication = resolveRelationsNames(publication, publicationName, schemas, userLookup);
                 for (var relationName : relationNamesOfPublication) {
 
                     var indexNameOrTemplateName = relationName.indexNameOrAlias();
@@ -163,7 +176,17 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
         }
 
         @VisibleForTesting
-        static List<RelationName> resolveRelationsNames(Publication publication, Schemas schemas) {
+        static List<RelationName> resolveRelationsNames(Publication publication, String publicationName, Schemas schemas, UserLookup userLookup) {
+            var user = userLookup.findUser(publication.owner());
+            if (user == null) {
+                LOGGER.warn(
+                    "Tables of a publication '{}' won't be replicated as the user '{}' owning the publication is not found.",
+                    publicationName,
+                    publication.owner()
+                );
+                return List.of();
+            }
+
             List<RelationName> relationNames;
             if (publication.isForAllTables()) {
                 relationNames = InformationSchemaIterables.tablesStream(schemas)
@@ -183,12 +206,27 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                         }
                         return false;
                     })
+                    .filter(t -> userCanPublish(t, user))
                     .map(RelationInfo::ident)
                     .toList();
             } else {
+                // No need to call userCanPublish() since for the pre-defined tables case this check was already done on the publication creation.
                 relationNames = publication.tables();
             }
             return relationNames;
+        }
+
+        private static boolean userCanPublish(TableInfo t, User publicationOwner) {
+            for (Privilege.Type type: READ_WRITE_DEFINE) {
+                // This check is triggered only on ALL TABLES case.
+                // Required privileges correspond to those we check for the pre-defined tables case in AccessControlImpl.visitCreatePublication.
+
+                // Schemas.DOC_SCHEMA_NAME is a dummy parameter since we are passing fqn as ident.
+                if (!publicationOwner.hasPrivilege(type, Privilege.Clazz.TABLE, t.ident().fqn(), Schemas.DOC_SCHEMA_NAME)) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
