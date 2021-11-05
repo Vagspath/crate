@@ -66,6 +66,7 @@ import static org.hamcrest.Matchers.is;
 
 public class LogicalReplicationITest extends ESTestCase {
 
+    private static final String SUBSCRIBING_USER = "subscriber";
     InternalTestCluster publisherCluster;
     SQLTransportExecutor publisherSqlExecutor;
 
@@ -226,9 +227,10 @@ public class LogicalReplicationITest extends ESTestCase {
         InetSocketAddress address = transportService.boundAddress().publishAddress().address();
         return String.format(
             Locale.ENGLISH,
-            "crate://%s:%d?mode=sniff&seeds=%s:%d",
+            "crate://%s:%d?user=%s&mode=sniff&seeds=%s:%d",
             address.getHostName(),
             address.getPort(),
+            SUBSCRIBING_USER,
             address.getHostName(),
             address.getPort()
         );
@@ -283,6 +285,9 @@ public class LogicalReplicationITest extends ESTestCase {
 
         executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
 
+        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
+
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
 
@@ -300,6 +305,8 @@ public class LogicalReplicationITest extends ESTestCase {
         executeOnPublisher("INSERT INTO doc.t1 (id) VALUES (1), (2)");
 
         executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
+        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
 
         executeOnSubscriber("CREATE TABLE doc.t1 (id int)");
         assertThrows(
@@ -325,6 +332,9 @@ public class LogicalReplicationITest extends ESTestCase {
 
         executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1, doc.t2");
 
+        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        executeOnPublisher("GRANT DQL ON TABLE doc.t1, doc.t2 TO " + SUBSCRIBING_USER);
+
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
 
@@ -348,6 +358,8 @@ public class LogicalReplicationITest extends ESTestCase {
         executeOnPublisher("INSERT INTO doc.t1 (id, p) VALUES (1, 1), (2, 2)");
 
         executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
+        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
@@ -372,6 +384,8 @@ public class LogicalReplicationITest extends ESTestCase {
         executeOnPublisher("INSERT INTO my_schema.t2 (id) VALUES (1), (2)");
 
         executeOnPublisher("CREATE PUBLICATION pub1 FOR ALL TABLES");
+        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        executeOnPublisher("GRANT DQL ON TABLE doc.t1, my_schema.t2 TO " + SUBSCRIBING_USER);
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
@@ -396,6 +410,8 @@ public class LogicalReplicationITest extends ESTestCase {
         executeOnPublisher("INSERT INTO doc.t1 (id) VALUES (1), (2)");
 
         executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
+        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();

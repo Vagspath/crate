@@ -28,7 +28,6 @@ import io.crate.metadata.RelationInfo;
 import io.crate.metadata.RelationName;
 import io.crate.metadata.Schemas;
 import io.crate.metadata.doc.DocTableInfo;
-import io.crate.metadata.table.TableInfo;
 import io.crate.replication.logical.LogicalReplicationService;
 import io.crate.replication.logical.exceptions.PublicationUnknownException;
 import io.crate.replication.logical.metadata.Publication;
@@ -223,28 +222,31 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                         }
                         return false;
                     })
-                    .filter(t -> userCanPublish(t, publicationOwner))
-                    .filter(t -> subscriberCanRead(t, subscriber))
+                    .filter(t -> userCanPublish(t.ident(), publicationOwner))
+                    .filter(t -> subscriberCanRead(t.ident(), subscriber))
                     .map(RelationInfo::ident)
                     .toList();
             } else {
                 // No need to call userCanPublish() since for the pre-defined tables case this check was already done on the publication creation.
-                relationNames = publication.tables();
+                relationNames = publication.tables()
+                    .stream()
+                    .filter(t -> subscriberCanRead(t, subscriber))
+                    .toList();
             }
             return relationNames;
         }
 
-        private static boolean subscriberCanRead(TableInfo t, User subscriber) {
-            return subscriber.hasPrivilege(Privilege.Type.DQL, Privilege.Clazz.TABLE, t.ident().fqn(), Schemas.DOC_SCHEMA_NAME);
+        private static boolean subscriberCanRead(RelationName relationName, User subscriber) {
+            return subscriber.hasPrivilege(Privilege.Type.DQL, Privilege.Clazz.TABLE, relationName.fqn(), Schemas.DOC_SCHEMA_NAME);
         }
 
-        private static boolean userCanPublish(TableInfo t, User publicationOwner) {
+        private static boolean userCanPublish(RelationName relationName, User publicationOwner) {
             for (Privilege.Type type: READ_WRITE_DEFINE) {
                 // This check is triggered only on ALL TABLES case.
                 // Required privileges correspond to those we check for the pre-defined tables case in AccessControlImpl.visitCreatePublication.
 
                 // Schemas.DOC_SCHEMA_NAME is a dummy parameter since we are passing fqn as ident.
-                if (!publicationOwner.hasPrivilege(type, Privilege.Clazz.TABLE, t.ident().fqn(), Schemas.DOC_SCHEMA_NAME)) {
+                if (!publicationOwner.hasPrivilege(type, Privilege.Clazz.TABLE, relationName.fqn(), Schemas.DOC_SCHEMA_NAME)) {
                     return false;
                 }
             }

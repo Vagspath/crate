@@ -22,7 +22,9 @@
 package io.crate.replication.logical.action;
 
 import io.crate.metadata.RelationName;
+import io.crate.metadata.Schemas;
 import io.crate.replication.logical.metadata.Publication;
+import io.crate.sql.tree.QualifiedName;
 import io.crate.test.integration.CrateDummyClusterServiceUnitTest;
 import io.crate.testing.Asserts;
 import io.crate.testing.SQLExecutor;
@@ -167,6 +169,48 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
         assertThat(resolvedRelations, contains(new RelationName("doc", "t1")));
         assertThat(resolvedRelations, not(contains(new RelationName("doc", "t3"))));
     }
+
+    @Test
+    public void test_resolve_relation_names_for_fixed_tables_ignores_table_when_subscriber_doesnt_have_read_permissions() throws Exception {
+        var publicationOwner = new User("publisher", Set.of(), Set.of(), null) {
+            @Override
+            public boolean hasPrivilege(Privilege.Type type, Privilege.Clazz clazz, String ident, String defaultSchema) {
+                return true;
+            }
+        };
+
+        var subscriber = new User("subscriber", Set.of(), Set.of(), null) {
+            @Override
+            public boolean hasPrivilege(Privilege.Type type, Privilege.Clazz clazz, String ident, String defaultSchema) {
+                return (type.equals(Privilege.Type.DQL) && clazz.equals(Privilege.Clazz.TABLE) && ident.equals("doc.t1"));
+            }
+        };
+
+        UserLookup userLookup = mock(UserLookup.class);
+        when(userLookup.findUser("publisher")).thenReturn(publicationOwner);
+        when(userLookup.findUser("subscriber")).thenReturn(subscriber);
+
+        var s = SQLExecutor.builder(clusterService)
+            .addTable("CREATE TABLE doc.t1 (id int)")
+            .addTable("CREATE TABLE doc.t2 (id int)")
+            .build();
+        var publication = new Publication("publisher", false,
+            List.of(
+                RelationName.of(QualifiedName.of("t1"), Schemas.DOC_SCHEMA_NAME),
+                RelationName.of(QualifiedName.of("t2"), Schemas.DOC_SCHEMA_NAME)
+            )
+        );
+
+        var resolvedRelations = PublicationsStateAction.TransportAction.resolveRelationsNames(
+            publication,
+            s.schemas(),
+            publicationOwner,
+            subscriber
+        );
+        assertThat(resolvedRelations, contains(new RelationName("doc", "t1")));
+        assertThat(resolvedRelations, not(contains(new RelationName("doc", "t2"))));
+    }
+
 
     @Test
     public void test_publication_owner_not_found_throws_exception() {
