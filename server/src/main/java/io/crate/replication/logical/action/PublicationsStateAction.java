@@ -63,6 +63,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import static io.crate.user.Privilege.Type.READ_WRITE_DEFINE;
 
@@ -137,11 +138,10 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                     return;
                 }
 
-                // Case 'allTables = true' requires additional check for user permissions but looked up user can be null
-                // if user got deleted before any subscription for the publication had been started.
-                // TODO: Either drop publication on owner-user removal or add to the warning a message that publication should be deleted.
-                // It actually applies to allTables = false as well, so probably need to move user lookup before resolveRelationsNames call.
-                List<RelationName> relationNamesOfPublication = resolveRelationsNames(publication, publicationName, schemas, userLookup);
+                User publicationOwner = ensurePublicationOwnerExists(publication.owner(), userLookup, publicationName);
+                User subscriber = ensureSubscriberExists(request.subscriber(), userLookup, publicationName);
+
+                List<RelationName> relationNamesOfPublication = resolveRelationsNames(publication, schemas, publicationOwner, subscriber);
                 for (var relationName : relationNamesOfPublication) {
 
                     var indexNameOrTemplateName = relationName.indexNameOrAlias();
@@ -176,16 +176,33 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
         }
 
         @VisibleForTesting
-        static List<RelationName> resolveRelationsNames(Publication publication, String publicationName, Schemas schemas, UserLookup userLookup) {
-            var user = userLookup.findUser(publication.owner());
+        static User ensurePublicationOwnerExists(String publicationOwner, UserLookup userLookup, String publicationName) {
+            var user = userLookup.findUser(publicationOwner);
             if (user == null) {
-                LOGGER.warn(
-                    "Tables of a publication '{}' won't be replicated as the user '{}' owning the publication is not found.",
-                    publicationName,
-                    publication.owner()
-                );
-                return List.of();
+                throw new IllegalStateException(
+                    String.format(Locale.ENGLISH, "User %s owning the publication %s is not found, stopping replication.",
+                        publicationOwner,
+                        publicationName
+                    ));
             }
+            return user;
+        }
+
+        @VisibleForTesting
+        static User ensureSubscriberExists(String subscriber, UserLookup userLookup, String publicationName) {
+            var user = userLookup.findUser(subscriber);
+            if (user == null) {
+                throw new IllegalStateException(
+                    String.format(Locale.ENGLISH, "User %s subscribed to the publication %s is not found, stopping replication.",
+                        subscriber,
+                        publicationName
+                    ));
+            }
+            return user;
+        }
+
+        @VisibleForTesting
+        static List<RelationName> resolveRelationsNames(Publication publication, Schemas schemas, User publicationOwner, User subscriber) {
 
             List<RelationName> relationNames;
             if (publication.isForAllTables()) {
@@ -206,7 +223,8 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                         }
                         return false;
                     })
-                    .filter(t -> userCanPublish(t, user))
+                    .filter(t -> userCanPublish(t, publicationOwner))
+                    .filter(t -> subscriberCanRead(t, subscriber))
                     .map(RelationInfo::ident)
                     .toList();
             } else {
@@ -214,6 +232,10 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                 relationNames = publication.tables();
             }
             return relationNames;
+        }
+
+        private static boolean subscriberCanRead(TableInfo t, User subscriber) {
+            return subscriber.hasPrivilege(Privilege.Type.DQL, Privilege.Clazz.TABLE, t.ident().fqn(), Schemas.DOC_SCHEMA_NAME);
         }
 
         private static boolean userCanPublish(TableInfo t, User publicationOwner) {
@@ -233,25 +255,35 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
     public static class Request extends MasterNodeReadRequest<Request> {
 
         private final List<String> publications;
+        private final String subscriber;
 
-        public Request(List<String> publications) {
+        public Request(List<String> publications, String subscriber) {
             this.publications = publications;
+            this.subscriber = subscriber;
         }
 
         public Request(StreamInput in) throws IOException {
             super(in);
             publications = in.readList(StreamInput::readString);
+            subscriber = in.readString();
         }
 
         public List<String> publications() {
             return publications;
         }
 
+        public String subscriber() {
+            return subscriber;
+        }
+
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             super.writeTo(out);
             out.writeStringCollection(publications);
+            out.writeString(subscriber);
         }
+
+
     }
 
     public static class Response extends TransportResponse {
