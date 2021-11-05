@@ -209,6 +209,7 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                     .filter(t -> {
                         if (t instanceof DocTableInfo dt) {
                             boolean softDeletes;
+                            // All checks are aligned for both cases (ALL TABLES and fixed) except soft deletes check.
                             if ((softDeletes = IndexSettings.INDEX_SOFT_DELETES_SETTING.get(dt.parameters())) == false) {
                                 LOGGER.warn(
                                     "Table '{}' won't be replicated as the required table setting " +
