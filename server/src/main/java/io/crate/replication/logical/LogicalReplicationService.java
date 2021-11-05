@@ -89,6 +89,7 @@ public class LogicalReplicationService extends RemoteClusterAware implements Clu
     private final Map<String, RemoteClusterConnection> remoteClusters = ConcurrentCollections.newConcurrentMap();
     private volatile SubscriptionsMetadata currentSubscriptionsMetadata = new SubscriptionsMetadata();
     private volatile PublicationsMetadata currentPublicationsMetadata = new PublicationsMetadata();
+    private final SynchronizeTableDefinitionsTask synchronizeTableDefinitionsTask;
 
     public LogicalReplicationService(Settings settings,
                                      ClusterService clusterService,
@@ -98,6 +99,12 @@ public class LogicalReplicationService extends RemoteClusterAware implements Clu
         this.transportService = transportService;
         this.clusterService = clusterService;
         this.threadPool = threadPool;
+        this.synchronizeTableDefinitionsTask = new SynchronizeTableDefinitionsTask(
+            settings,
+            threadPool,
+            subscriptionName -> getRemoteClusterClient(threadPool, subscriptionName),
+            clusterService
+        );
         clusterService.addListener(this);
     }
 
@@ -157,11 +164,11 @@ public class LogicalReplicationService extends RemoteClusterAware implements Clu
                             // The startReplication will initiate the remote connection upfront
                             LOGGER.debug("Start logical replication for subscription '{}'", subscriptionName);
                             startReplication(subscriptionName, entry.getValue(), new ActionListener<>() {
-
                                 @Override
                                 public void onResponse(AcknowledgedResponse acknowledgedResponse) {
-                                    LOGGER.debug("Acknowledged logical replication for subscription '{}'",
-                                                 subscriptionName);
+                                    LOGGER.debug("Acknowledged logical replication for subscription '{}'", subscriptionName);
+                                    LOGGER.debug("Start tracking metadata for subscription '{}'", subscriptionName);
+                                    synchronizeTableDefinitionsTask.addRemoteClusterToTrack(subscriptionName);
                                 }
 
                                 @Override
