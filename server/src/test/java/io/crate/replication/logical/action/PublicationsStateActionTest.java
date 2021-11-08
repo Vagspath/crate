@@ -210,43 +210,4 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
         assertThat(resolvedRelations, contains(new RelationName("doc", "t1")));
         assertThat(resolvedRelations, not(contains(new RelationName("doc", "t2"))));
     }
-
-
-    @Test
-    public void test_publication_owner_not_found_throws_exception() {
-        String publicationOwner = "publisher";
-        String publicationName = "pub 1";
-        UserLookup userLookup = mock(UserLookup.class);
-        when(userLookup.findUser(publicationOwner)).thenReturn(null);
-
-        String expected = String.format(Locale.ENGLISH, "User %s owning the publication %s is not found, stopping replication.",
-            publicationOwner,
-            publicationName
-        );
-
-        Asserts.assertThrowsMatches(
-            () -> PublicationsStateAction.TransportAction.ensurePublicationOwnerExists(publicationOwner, userLookup, publicationName),
-            IllegalStateException.class,
-            expected
-        );
-    }
-
-    @Test
-    public void test_subscriber_not_found_throws_exception() {
-        String subscriber = "subscriber";
-        String publicationName = "pub 1";
-        UserLookup userLookup = mock(UserLookup.class);
-        when(userLookup.findUser(subscriber)).thenReturn(null);
-
-        String expected = String.format(Locale.ENGLISH, "User %s subscribed to the publication %s is not found, stopping replication.",
-            subscriber,
-            publicationName
-        );
-
-        Asserts.assertThrowsMatches(
-            () -> PublicationsStateAction.TransportAction.ensureSubscriberExists(subscriber, userLookup, publicationName),
-            IllegalStateException.class,
-            expected
-        );
-    }
 }

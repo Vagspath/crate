@@ -137,8 +137,13 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                     return;
                 }
 
-                User publicationOwner = ensurePublicationOwnerExists(publication.owner(), userLookup, publicationName);
-                User subscriber = ensureSubscriberExists(request.subscriber(), userLookup, publicationName);
+                // Both users cannot be null as we ensure that users who owns publication or subscription
+                // or are part of subscription's connection info cannot be dropped.
+
+                // Also, before creating publication or subscription we check that owner or user in connection info
+                // was not dropped right before creation.
+                User publicationOwner = userLookup.findUser(publication.owner());
+                User subscriber = userLookup.findUser(request.subscribingUserName());
 
                 List<RelationName> relationNamesOfPublication = resolveRelationsNames(publication, schemas, publicationOwner, subscriber);
                 for (var relationName : relationNamesOfPublication) {
@@ -175,32 +180,6 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
         }
 
         @VisibleForTesting
-        static User ensurePublicationOwnerExists(String publicationOwner, UserLookup userLookup, String publicationName) {
-            var user = userLookup.findUser(publicationOwner);
-            if (user == null) {
-                throw new IllegalStateException(
-                    String.format(Locale.ENGLISH, "User %s owning the publication %s is not found, stopping replication.",
-                        publicationOwner,
-                        publicationName
-                    ));
-            }
-            return user;
-        }
-
-        @VisibleForTesting
-        static User ensureSubscriberExists(String subscriber, UserLookup userLookup, String publicationName) {
-            var user = userLookup.findUser(subscriber);
-            if (user == null) {
-                throw new IllegalStateException(
-                    String.format(Locale.ENGLISH, "User %s subscribed to the publication %s is not found, stopping replication.",
-                        subscriber,
-                        publicationName
-                    ));
-            }
-            return user;
-        }
-
-        @VisibleForTesting
         static List<RelationName> resolveRelationsNames(Publication publication, Schemas schemas, User publicationOwner, User subscriber) {
 
             List<RelationName> relationNames;
@@ -229,6 +208,7 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                     .toList();
             } else {
                 // No need to call userCanPublish() since for the pre-defined tables case this check was already done on the publication creation.
+                // Soft deletes check for pre-defined tables was done in LogicalReplicationAnalyzer on the publication creation.
                 relationNames = publication.tables()
                     .stream()
                     .filter(t -> subscriberCanRead(t, subscriber))
@@ -258,35 +238,33 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
     public static class Request extends MasterNodeReadRequest<Request> {
 
         private final List<String> publications;
-        private final String subscriber;
+        private final String subscribingUserName;
 
-        public Request(List<String> publications, String subscriber) {
+        public Request(List<String> publications, String subscribingUserName) {
             this.publications = publications;
-            this.subscriber = subscriber;
+            this.subscribingUserName = subscribingUserName;
         }
 
         public Request(StreamInput in) throws IOException {
             super(in);
             publications = in.readList(StreamInput::readString);
-            subscriber = in.readString();
+            subscribingUserName = in.readString();
         }
 
         public List<String> publications() {
             return publications;
         }
 
-        public String subscriber() {
-            return subscriber;
+        public String subscribingUserName() {
+            return subscribingUserName;
         }
 
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             super.writeTo(out);
             out.writeStringCollection(publications);
-            out.writeString(subscriber);
+            out.writeString(subscribingUserName);
         }
-
-
     }
 
     public static class Response extends TransportResponse {
