@@ -81,7 +81,7 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
         var publication = new Publication("some_user", true, List.of());
 
         var expectedLogMessage = "Table 'doc.t2' won't be replicated as the required table setting " +
-            "'soft_deletes.enabled' is set to: false";
+                                 "'soft_deletes.enabled' is set to: false";
         appender.addExpectation(new MockLogAppender.SeenEventExpectation(
             expectedLogMessage,
             Loggers.getLogger(PublicationsStateAction.class).getName(),
