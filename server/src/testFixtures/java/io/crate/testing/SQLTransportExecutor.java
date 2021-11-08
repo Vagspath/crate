@@ -235,6 +235,13 @@ public class SQLTransportExecutor {
         );
     }
 
+    public Session newSession(User user) {
+        return clientProvider.sqlOperations().createSession(
+            searchPath.currentSchema(),
+            user
+        );
+    }
+
     public SQLResponse exec(String statement, Session session) {
         return execute(statement, null, session).actionGet(REQUEST_TIMEOUT);
     }

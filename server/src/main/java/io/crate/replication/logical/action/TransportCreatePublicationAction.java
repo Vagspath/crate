@@ -28,6 +28,7 @@ import io.crate.metadata.cluster.DDLClusterStateTaskExecutor;
 import io.crate.replication.logical.exceptions.PublicationAlreadyExistsException;
 import io.crate.replication.logical.metadata.Publication;
 import io.crate.replication.logical.metadata.PublicationsMetadata;
+import io.crate.user.metadata.UsersMetadata;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.ClusterStateTaskExecutor;
@@ -40,6 +41,8 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.Singleton;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
+
+import java.util.Locale;
 
 @Singleton
 public class TransportCreatePublicationAction extends AbstractDDLTransportAction<CreatePublicationRequest, AcknowledgedResponse> {
@@ -74,6 +77,18 @@ public class TransportCreatePublicationAction extends AbstractDDLTransportAction
                 var oldMetadata = (PublicationsMetadata) mdBuilder.getCustom(PublicationsMetadata.TYPE);
                 if (oldMetadata != null && oldMetadata.publications().containsKey(request.name())) {
                     throw new PublicationAlreadyExistsException(request.name());
+                }
+
+                // Ensure publication owner exists
+                UsersMetadata usersMetadata = currentMetadata.custom(UsersMetadata.TYPE);
+                if (usersMetadata != null && usersMetadata.contains(request.owner())) {
+                    throw new IllegalStateException(
+                        String.format(
+                            Locale.ENGLISH, "Publication %s cannot be created as an owner has been dropped.",
+                            request.name(),
+                            request.owner()
+                        )
+                    );
                 }
 
                 // Ensure tables exists

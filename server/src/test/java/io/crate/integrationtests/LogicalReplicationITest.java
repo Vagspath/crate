@@ -22,12 +22,15 @@
 package io.crate.integrationtests;
 
 import io.crate.action.sql.SQLOperations;
+import io.crate.action.sql.Session;
 import io.crate.exceptions.RelationAlreadyExists;
 import io.crate.plugin.SQLPlugin;
 import io.crate.protocols.postgres.PostgresNetty;
 import io.crate.replication.logical.LogicalReplicationSettings;
 import io.crate.testing.SQLResponse;
 import io.crate.testing.SQLTransportExecutor;
+import io.crate.user.User;
+import io.crate.user.UserLookup;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.network.NetworkModule;
 import org.elasticsearch.common.settings.Settings;
@@ -150,6 +153,10 @@ public class LogicalReplicationITest extends ESTestCase {
         return publisherSqlExecutor.exec(sql);
     }
 
+    private SQLResponse executeOnPublisherAsUser(String sql, User user) {
+        return publisherSqlExecutor.exec(sql, publisherSqlExecutor.newSession(user));
+    }
+
     private long[] executeBulkOnPublisher(String sql, @Nullable Object[][] bulkArgs) {
         return publisherSqlExecutor.execBulk(sql, bulkArgs);
     }
@@ -231,6 +238,19 @@ public class LogicalReplicationITest extends ESTestCase {
             address.getHostName(),
             address.getPort()
         );
+    }
+
+    @Test
+    public void test_create_publication_check_owner_was_not_deleted_before_creation() {
+        executeOnPublisher("CREATE TABLE doc.t1 (id INT)");
+
+        String publicationOwner = "publicationOwner";
+        executeOnPublisher("CREATE USER " + publicationOwner);
+        UserLookup userLookup = publisherCluster.getInstance(UserLookup.class);
+        User user = userLookup.findUser(publicationOwner);
+
+        executeOnPublisher("DROP USER " + publicationOwner);
+        executeOnPublisherAsUser("CREATE PUBLICATION pub1 FOR TABLE doc.t1", user);
     }
 
     @Test
