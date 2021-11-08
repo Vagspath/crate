@@ -26,7 +26,6 @@ import io.crate.metadata.Schemas;
 import io.crate.replication.logical.metadata.Publication;
 import io.crate.sql.tree.QualifiedName;
 import io.crate.test.integration.CrateDummyClusterServiceUnitTest;
-import io.crate.testing.Asserts;
 import io.crate.testing.SQLExecutor;
 import io.crate.user.Privilege;
 import io.crate.user.User;
@@ -39,12 +38,9 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
-import static io.crate.user.Privilege.Type.READ_WRITE_DEFINE;
 import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.not;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -104,7 +100,7 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
         var publicationOwner = new User("publisher", Set.of(), Set.of(), null) {
             @Override
             public boolean hasPrivilege(Privilege.Type type, Privilege.Clazz clazz, String ident, String defaultSchema) {
-                return ident.equals("doc.t1"));
+                return ident.equals("doc.t1");
             }
         };
         var subscriber = new User("subscriber", Set.of(), Set.of(), null) {
@@ -130,8 +126,8 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
             publicationOwner,
             subscriber
         );
+
         assertThat(resolvedRelations, contains(new RelationName("doc", "t1")));
-        assertThat(resolvedRelations, not(contains(new RelationName("doc", "t3"))));
     }
 
     @Test
@@ -146,7 +142,7 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
         var subscriber = new User("subscriber", Set.of(), Set.of(), null) {
             @Override
             public boolean hasPrivilege(Privilege.Type type, Privilege.Clazz clazz, String ident, String defaultSchema) {
-                return ident.equals("doc.t1"));
+                return ident.equals("doc.t1");
             }
         };
 
@@ -167,7 +163,6 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
             subscriber
         );
         assertThat(resolvedRelations, contains(new RelationName("doc", "t1")));
-        assertThat(resolvedRelations, not(contains(new RelationName("doc", "t3"))));
     }
 
     @Test
@@ -182,7 +177,7 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
         var subscriber = new User("subscriber", Set.of(), Set.of(), null) {
             @Override
             public boolean hasPrivilege(Privilege.Type type, Privilege.Clazz clazz, String ident, String defaultSchema) {
-                return ident.equals("doc.t1"));
+                return ident.equals("doc.t1");
             }
         };
 
@@ -208,6 +203,5 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
             subscriber
         );
         assertThat(resolvedRelations, contains(new RelationName("doc", "t1")));
-        assertThat(resolvedRelations, not(contains(new RelationName("doc", "t2"))));
     }
 }

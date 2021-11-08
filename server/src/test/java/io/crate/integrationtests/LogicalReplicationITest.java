@@ -51,10 +51,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -283,10 +280,7 @@ public class LogicalReplicationITest extends ESTestCase {
                            ")");
         executeOnPublisher("INSERT INTO doc.t1 (id) VALUES (1), (2)");
 
-        executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
-
-        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
-        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
+        createPublication("pub1", false, "doc.t1");
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
@@ -297,6 +291,8 @@ public class LogicalReplicationITest extends ESTestCase {
                                                      "2\n"));
     }
 
+
+
     @Test
     public void test_subscribing_to_publication_while_table_exists_raises_error() throws Exception {
         executeOnPublisher("CREATE TABLE doc.t1 (id INT) CLUSTERED INTO 1 SHARDS WITH(" +
@@ -304,9 +300,7 @@ public class LogicalReplicationITest extends ESTestCase {
                            ")");
         executeOnPublisher("INSERT INTO doc.t1 (id) VALUES (1), (2)");
 
-        executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
-        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
-        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
+        createPublication("pub1", false, "doc.t1");
 
         executeOnSubscriber("CREATE TABLE doc.t1 (id int)");
         assertThrows(
@@ -330,10 +324,7 @@ public class LogicalReplicationITest extends ESTestCase {
                            ")");
         executeOnPublisher("INSERT INTO doc.t2 (id) VALUES (3), (4)");
 
-        executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1, doc.t2");
-
-        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
-        executeOnPublisher("GRANT DQL ON TABLE doc.t1, doc.t2 TO " + SUBSCRIBING_USER);
+        createPublication("pub1", false, "doc.t1", "doc.t2");
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
@@ -357,9 +348,7 @@ public class LogicalReplicationITest extends ESTestCase {
                            ")");
         executeOnPublisher("INSERT INTO doc.t1 (id, p) VALUES (1, 1), (2, 2)");
 
-        executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
-        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
-        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
+        createPublication("pub1", false, "doc.t1");
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
@@ -383,9 +372,7 @@ public class LogicalReplicationITest extends ESTestCase {
                            ")");
         executeOnPublisher("INSERT INTO my_schema.t2 (id) VALUES (1), (2)");
 
-        executeOnPublisher("CREATE PUBLICATION pub1 FOR ALL TABLES");
-        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
-        executeOnPublisher("GRANT DQL ON TABLE doc.t1, my_schema.t2 TO " + SUBSCRIBING_USER);
+        createPublication("pub1", true,"doc.t1", "my_schema.t2");
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
@@ -409,9 +396,8 @@ public class LogicalReplicationITest extends ESTestCase {
                            ")");
         executeOnPublisher("INSERT INTO doc.t1 (id) VALUES (1), (2)");
 
-        executeOnPublisher("CREATE PUBLICATION pub1 FOR TABLE doc.t1");
-        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
-        executeOnPublisher("GRANT DQL ON TABLE doc.t1 TO " + SUBSCRIBING_USER);
+
+        createPublication("pub1", false, "doc.t1");
 
         executeOnSubscriber("CREATE SUBSCRIPTION sub1 CONNECTION '" + publisherConnectionUrl() + "' publication pub1");
         ensureGreenOnSubscriber();
@@ -447,5 +433,16 @@ public class LogicalReplicationITest extends ESTestCase {
             }
         }, 10, TimeUnit.SECONDS);
 
+    }
+
+    private void createPublication(String pub, boolean isForAllTables, String... tables) {
+        String tablesAsString = Arrays.stream(tables).collect(Collectors.joining(","));
+        if (isForAllTables) {
+            executeOnPublisher("CREATE PUBLICATION " + pub + " FOR ALL TABLES");
+        } else {
+            executeOnPublisher("CREATE PUBLICATION " + pub + " FOR TABLE " + tablesAsString);
+        }
+        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        executeOnPublisher("GRANT DQL ON TABLE " + tablesAsString + " TO " + SUBSCRIBING_USER);
     }
 }

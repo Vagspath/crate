@@ -180,7 +180,7 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
         }
 
         @VisibleForTesting
-        static List<RelationName> resolveRelationsNames(Publication publication, 
+        static List<RelationName> resolveRelationsNames(Publication publication,
                                                         Schemas schemas,
                                                         User publicationOwner,
                                                         User subscribedUser) {
@@ -206,7 +206,7 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                         return false;
                     })
                     .filter(t -> userCanPublish(t.ident(), publicationOwner))
-                    .filter(t -> subscriberCanRead(t.ident(), subscriber))
+                    .filter(t -> subscriberCanRead(t.ident(), subscribedUser))
                     .map(RelationInfo::ident)
                     .toList();
             } else {
@@ -214,7 +214,7 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
                 // Soft deletes check for pre-defined tables was done in LogicalReplicationAnalyzer on the publication creation.
                 relationNames = publication.tables()
                     .stream()
-                    .filter(t -> subscriberCanRead(t, subscriber))
+                    .filter(t -> subscriberCanRead(t, subscribedUser))
                     .toList();
             }
             return relationNames;
