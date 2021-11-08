@@ -23,8 +23,10 @@ package io.crate.replication.logical.action;
 
 import io.crate.replication.logical.LogicalReplicationService;
 import io.crate.replication.logical.exceptions.SubscriptionAlreadyExistsException;
+import io.crate.replication.logical.metadata.ConnectionInfo;
 import io.crate.replication.logical.metadata.Subscription;
 import io.crate.replication.logical.metadata.SubscriptionsMetadata;
+import io.crate.user.metadata.UsersMetadata;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.action.support.master.TransportMasterNodeAction;
@@ -41,6 +43,7 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 
 import java.io.IOException;
+import java.util.Locale;
 
 public class TransportCreateSubscriptionAction extends TransportMasterNodeAction<CreateSubscriptionRequest, AcknowledgedResponse> {
 
@@ -80,6 +83,30 @@ public class TransportCreateSubscriptionAction extends TransportMasterNodeAction
                                    ClusterState state,
                                    ActionListener<AcknowledgedResponse> listener) throws Exception {
 
+
+        // Ensure subscription owner and subscribing user exists
+        UsersMetadata usersMetadata = state.metadata().custom(UsersMetadata.TYPE);
+        if (usersMetadata != null) {
+            if (!usersMetadata.userNames().contains(request.owner())) {
+                throw new IllegalStateException(
+                    String.format(
+                        Locale.ENGLISH, "Subscription %s cannot be created as the owner %s has been dropped.",
+                        request.name(),
+                        request.owner()
+                    )
+                );
+            }
+            var subscribingUser = request.connectionInfo().settings().get(ConnectionInfo.USERNAME.getKey());
+            if (!usersMetadata.userNames().contains(subscribingUser)) {
+                throw new IllegalStateException(
+                    String.format(
+                        Locale.ENGLISH, "Subscription %s cannot be created as the subscribing user %s has been dropped.",
+                        request.name(),
+                        request.owner()
+                    )
+                );
+            }
+        }
         Subscription subscription = new Subscription(
             request.owner(),
             request.connectionInfo(),

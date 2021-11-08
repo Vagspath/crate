@@ -84,7 +84,7 @@ public class TransportCreatePublicationAction extends AbstractDDLTransportAction
                 if (usersMetadata != null && usersMetadata.contains(request.owner())) {
                     throw new IllegalStateException(
                         String.format(
-                            Locale.ENGLISH, "Publication %s cannot be created as an owner has been dropped.",
+                            Locale.ENGLISH, "Publication %s cannot be created as an owner %s has been dropped.",
                             request.name(),
                             request.owner()
                         )
