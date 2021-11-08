@@ -180,7 +180,10 @@ public class PublicationsStateAction extends ActionType<PublicationsStateAction.
         }
 
         @VisibleForTesting
-        static List<RelationName> resolveRelationsNames(Publication publication, Schemas schemas, User publicationOwner, User subscriber) {
+        static List<RelationName> resolveRelationsNames(Publication publication, 
+                                                        Schemas schemas,
+                                                        User publicationOwner,
+                                                        User subscribedUser) {
 
             List<RelationName> relationNames;
             if (publication.isForAllTables()) {
