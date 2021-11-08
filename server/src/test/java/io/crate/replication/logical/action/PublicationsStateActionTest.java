@@ -104,7 +104,7 @@ public class PublicationsStateActionTest extends CrateDummyClusterServiceUnitTes
         var publicationOwner = new User("publisher", Set.of(), Set.of(), null) {
             @Override
             public boolean hasPrivilege(Privilege.Type type, Privilege.Clazz clazz, String ident, String defaultSchema) {
-                return (READ_WRITE_DEFINE.contains(type) && clazz.equals(Privilege.Clazz.TABLE) && ident.equals("doc.t1"));
+                return ident.equals("doc.t1"));
             }
         };
         var subscriber = new User("subscriber", Set.of(), Set.of(), null) {
