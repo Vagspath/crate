@@ -61,10 +61,10 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
     private final ThreadPool threadPool;
     private final Function<String, Client> remoteClient;
     private final ClusterService clusterService;
-    private final Set<String> subscriptionsToTrack = Collections.synchronizedSet(new HashSet<>());
     private final TimeValue pollDelay;
     private final Iterator<TimeValue> delay;
 
+    private volatile Set<String> subscriptionsToTrack = new HashSet<>();
     private Scheduler.Cancellable cancellable;
     private boolean isStarted = false;
 
@@ -93,8 +93,12 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
         isStarted = true;
     }
 
-    public boolean addRemoteClusterToTrack(String remoteCluster) {
-        return subscriptionsToTrack.add(remoteCluster);
+    public synchronized boolean addSubscriptionsToTrack(String subscriptionName) {
+        return subscriptionsToTrack.add(subscriptionName);
+    }
+
+    public synchronized boolean removeRemoteClusterToTrack(String subscriptionName) {
+        return subscriptionsToTrack.remove(subscriptionName);
     }
 
     public boolean isStarted() {
