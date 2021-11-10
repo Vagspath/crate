@@ -164,20 +164,18 @@ public class LogicalReplicationService extends RemoteClusterAware implements Clu
                             // The startReplication will initiate the remote connection upfront
                             LOGGER.debug("Start logical replication for subscription '{}'", subscriptionName);
                             startReplication(subscriptionName, entry.getValue(), new ActionListener<>() {
-                                                 @Override
-                                                 public void onResponse(AcknowledgedResponse acknowledgedResponse) {
-                                                     LOGGER.debug("Acknowledged logical replication for subscription '{}'",
-                                                                  subscriptionName);
-                                                     LOGGER.debug("Start tracking metadata for subscription '{}'", subscriptionName);
-                                                     synchronizeTableDefinitionsTask.addSubscriptions(subscriptionName);
-                                                 }
+                                @Override
+                                public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                                    LOGGER.debug("Acknowledged logical replication for subscription '{}'", subscriptionName);
+                                    LOGGER.debug("Start tracking metadata for subscription '{}'", subscriptionName);
+                                    synchronizeTableDefinitionsTask.addSubscriptions(subscriptionName);
+                                }
 
-                                                 @Override
-                                                 public void onFailure(Exception e) {
-                                                     LOGGER.debug("Failure for logical replication for subscription", e);
-                                                 }
-                                             }
-                            );
+                                @Override
+                                public void onFailure(Exception e) {
+                                    LOGGER.debug("Failure for logical replication for subscription", e);
+                                }
+                            });
                         }
                     ).run();
                 } else {
@@ -222,6 +220,7 @@ public class LogicalReplicationService extends RemoteClusterAware implements Clu
 
     @Override
     public void close() throws IOException {
+        synchronizeTableDefinitionsTask.close();
         IOUtils.close(remoteClusters.values());
     }
 

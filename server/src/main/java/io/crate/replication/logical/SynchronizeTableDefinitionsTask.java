@@ -23,6 +23,7 @@ package io.crate.replication.logical;
 
 import io.crate.common.annotations.VisibleForTesting;
 import io.crate.common.unit.TimeValue;
+import io.crate.execution.support.RetryRunnable;
 import io.crate.metadata.RelationName;
 import io.crate.replication.logical.metadata.PublicationsMetadata;
 import io.crate.replication.logical.metadata.Subscription;
@@ -40,14 +41,12 @@ import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -61,35 +60,47 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
     private final Function<String, Client> remoteClient;
     private final ClusterService clusterService;
     private final TimeValue pollDelay;
-    private final Iterator<TimeValue> delay;
 
     private volatile Set<String> subscriptionsToTrack = new HashSet<>();
-    private Scheduler.Cancellable cancellable;
-    private boolean isActive = false;
+    private volatile Scheduler.Cancellable cancellable;
+    private volatile boolean isActive = false;
 
     public SynchronizeTableDefinitionsTask(Settings settings, ThreadPool threadPool, Function<String, Client> remoteClient, ClusterService clusterService) {
         this.threadPool = threadPool;
         this.remoteClient = remoteClient;
         this.clusterService = clusterService;
         this.pollDelay = LogicalReplicationSettings.REPLICATION_READ_POLL_DURATION.get(settings);
-        this.delay = BackoffPolicy.exponentialBackoff(pollDelay, 8).iterator();
     }
 
     private void start() {
         assert isActive == false : "SynchronizeTableDefinitionsTask is already started";
         assert clusterService.state().getNodes().getLocalNode().isMasterNode() : "SynchronizeTableDefinitionsTask must only be executed on the master node";
-        var executor = threadPool.executor(ThreadPool.Names.LOGICAL_REPLICATION);
+        var runnable = new RetryRunnable(
+            threadPool.executor(ThreadPool.Names.LOGICAL_REPLICATION),
+            threadPool.scheduler(),
+            this::run,
+            BackoffPolicy.exponentialBackoff(pollDelay, 8)
+        );
+        runnable.run();
+        isActive = true;
+    }
 
-        try {
-            executor.execute(this::run);
-        } catch (EsRejectedExecutionException e) {
-            threadPool.schedule(
+    private synchronized void stop() {
+        if (cancellable != null) {
+            cancellable.cancel();
+            isActive = false;
+        }
+    }
+
+    private synchronized void schedule() {
+        if (cancellable == null) {
+            cancellable = threadPool.schedule(
                 this::run,
-                delay.next(),
+                pollDelay,
                 ThreadPool.Names.LOGICAL_REPLICATION
             );
+            isActive = true;
         }
-        isActive = true;
     }
 
     public synchronized boolean addSubscriptions(String subscriptionName) {
@@ -102,9 +113,8 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
 
     public synchronized boolean removeSubscriptions(String subscriptionName) {
         var updated = subscriptionsToTrack.remove(subscriptionName);
-        if (subscriptionsToTrack.isEmpty() && isActive) {
-            cancellable.cancel();
-            isActive = false;
+        if (isActive && subscriptionsToTrack.isEmpty()) {
+            stop();
         }
         return updated;
     }
@@ -117,20 +127,18 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
             getRemoteClusterState(subscriptionName, new ActionListener<>() {
                 @Override
                 public void onResponse(ClusterState remoteClusterState) {
-                    clusterService.submitStateUpdateTask("track-remote-cluster-metadata-changes",
-                        new ClusterStateUpdateTask() {
+                    clusterService.submitStateUpdateTask("track-metadata-changes", new ClusterStateUpdateTask() {
 
-                            @Override
-                            public ClusterState execute(ClusterState localClusterState) throws Exception {
-                                return syncMappings(subscriptionName, localClusterState, remoteClusterState);
-                            }
-
-                            @Override
-                            public void onFailure(String source, Exception e) {
-                                LOGGER.error(e);
-                            }
+                        @Override
+                        public ClusterState execute(ClusterState localClusterState) throws Exception {
+                            return syncMappings(subscriptionName, localClusterState, remoteClusterState);
                         }
-                    );
+
+                        @Override
+                        public void onFailure(String source, Exception e) {
+                            LOGGER.error(e);
+                        }
+                    });
                 }
 
                 @Override
@@ -139,18 +147,14 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
                 }
             });
         }
-        cancellable = threadPool.schedule(
-            this::run,
-            this.pollDelay,
-            ThreadPool.Names.LOGICAL_REPLICATION
-        );
+        schedule();
     }
 
     @VisibleForTesting
     static ClusterState syncMappings(String subscriptionName, ClusterState localClusterState, ClusterState remoteClusterState) {
         PublicationsMetadata publicationsMetadata = remoteClusterState.metadata().custom(PublicationsMetadata.TYPE);
         SubscriptionsMetadata subscriptionsMetadata = localClusterState.metadata().custom(SubscriptionsMetadata.TYPE);
-        if (publicationsMetadata == null && subscriptionsMetadata == null) {
+        if (publicationsMetadata == null || subscriptionsMetadata == null) {
             return localClusterState;
         }
         var subscribedTables = new HashSet<RelationName>();
@@ -188,7 +192,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
             }
         }
         if (mappingsChanged) {
-            if(LOGGER.isDebugEnabled()) {
+            if (LOGGER.isDebugEnabled()) {
                 LOGGER.trace("Updated index metadata from remote clusterr");
             }
             return ClusterState.builder(localClusterState).metadata(metadataBuilder).build();
@@ -220,10 +224,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
 
     @Override
     public void close() throws IOException {
-        if (cancellable != null) {
-            cancellable.cancel();
-            isActive = false;
-        }
+        stop();
     }
 
 }
