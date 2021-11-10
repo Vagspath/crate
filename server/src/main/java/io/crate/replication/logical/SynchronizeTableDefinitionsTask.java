@@ -65,7 +65,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
 
     private volatile Set<String> subscriptionsToTrack = new HashSet<>();
     private Scheduler.Cancellable cancellable;
-    private boolean isStarted = false;
+    private boolean isActive = false;
 
     public SynchronizeTableDefinitionsTask(Settings settings, ThreadPool threadPool, Function<String, Client> remoteClient, ClusterService clusterService) {
         this.threadPool = threadPool;
@@ -75,8 +75,8 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
         this.delay = BackoffPolicy.exponentialBackoff(pollDelay, 8).iterator();
     }
 
-    public void start() {
-        assert isStarted == false : "SynchronizeTableDefinitionsTask is already started";
+    private void start() {
+        assert isActive == false : "SynchronizeTableDefinitionsTask is already started";
         assert clusterService.state().getNodes().getLocalNode().isMasterNode() : "SynchronizeTableDefinitionsTask must only be executed on the master node";
         var executor = threadPool.executor(ThreadPool.Names.LOGICAL_REPLICATION);
 
@@ -89,19 +89,24 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
                 ThreadPool.Names.LOGICAL_REPLICATION
             );
         }
-        isStarted = true;
+        isActive = true;
     }
 
-    public synchronized boolean addSubscriptionsToTrack(String subscriptionName) {
-        return subscriptionsToTrack.add(subscriptionName);
+    public synchronized boolean addSubscriptions(String subscriptionName) {
+        var updated = subscriptionsToTrack.add(subscriptionName);
+        if (updated && !isActive) {
+            start();
+        }
+        return updated;
     }
 
-    public synchronized boolean removeSubscriptionsToTrack(String subscriptionName) {
-        return subscriptionsToTrack.remove(subscriptionName);
-    }
-
-    public boolean isStarted() {
-        return isStarted;
+    public synchronized boolean removeSubscriptions(String subscriptionName) {
+        var updated = subscriptionsToTrack.remove(subscriptionName);
+        if (subscriptionsToTrack.isEmpty() && isActive) {
+            cancellable.cancel();
+            isActive = false;
+        }
+        return updated;
     }
 
     private void run() {
@@ -217,7 +222,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
     public void close() throws IOException {
         if (cancellable != null) {
             cancellable.cancel();
-            isStarted = false;
+            isActive = false;
         }
     }
 

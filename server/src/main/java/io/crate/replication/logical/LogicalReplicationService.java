@@ -169,10 +169,7 @@ public class LogicalReplicationService extends RemoteClusterAware implements Clu
                                                      LOGGER.debug("Acknowledged logical replication for subscription '{}'",
                                                                   subscriptionName);
                                                      LOGGER.debug("Start tracking metadata for subscription '{}'", subscriptionName);
-                                                     synchronizeTableDefinitionsTask.addSubscriptionsToTrack(subscriptionName);
-                                                     if (!synchronizeTableDefinitionsTask.isStarted()) {
-                                                         synchronizeTableDefinitionsTask.start();
-                                                     }
+                                                     synchronizeTableDefinitionsTask.addSubscriptions(subscriptionName);
                                                  }
 
                                                  @Override
