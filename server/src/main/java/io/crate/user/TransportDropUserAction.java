@@ -22,6 +22,10 @@
 package io.crate.user;
 
 import com.google.common.annotations.VisibleForTesting;
+import io.crate.replication.logical.metadata.Publication;
+import io.crate.replication.logical.metadata.PublicationsMetadata;
+import io.crate.replication.logical.metadata.Subscription;
+import io.crate.replication.logical.metadata.SubscriptionsMetadata;
 import io.crate.user.metadata.UsersMetadata;
 import io.crate.user.metadata.UsersPrivilegesMetadata;
 import org.elasticsearch.action.ActionListener;
@@ -41,6 +45,9 @@ import org.elasticsearch.transport.TransportService;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 
 public class TransportDropUserAction extends TransportMasterNodeAction<DropUserRequest, WriteUserResponse> {
 
@@ -69,10 +76,45 @@ public class TransportDropUserAction extends TransportMasterNodeAction<DropUserR
         return new WriteUserResponse(in);
     }
 
+
+
     @Override
     protected void masterOperation(DropUserRequest request,
                                    ClusterState state,
                                    ActionListener<WriteUserResponse> listener) throws Exception {
+
+        String errorMsg = "User '%s' cannot be dropped. %s '%s' needs to be dropped first.";
+
+        // Ensure user doesn't own subscriptions.
+        SubscriptionsMetadata subscriptionsMetadata = state.metadata().custom(SubscriptionsMetadata.TYPE);
+        if (subscriptionsMetadata != null) {
+            subscriptionsMetadata
+                .subscription()
+                .entrySet()
+                .forEach(entry -> {
+                    if (entry.getValue().owner().equals(request.userName())) {
+                        throw new IllegalStateException(
+                            String.format(Locale.ENGLISH, errorMsg, request.userName(), "Subscription", entry.getKey())
+                        );
+                    }
+                });
+        }
+
+        // Ensure user doesn't own publications.
+        PublicationsMetadata publicationsMetadata = state.metadata().custom(PublicationsMetadata.TYPE);
+        if (publicationsMetadata != null) {
+            publicationsMetadata
+                .publications()
+                .entrySet()
+                .forEach(entry -> {
+                    if (entry.getValue().owner().equals(request.userName())) {
+                        throw new IllegalStateException(
+                            String.format(Locale.ENGLISH, errorMsg, request.userName(), "Publication", entry.getKey())
+                        );
+                    }
+                });
+        }
+
         clusterService.submitStateUpdateTask("drop_user [" + request.userName() + "]",
             new AckedClusterStateUpdateTask<WriteUserResponse>(Priority.URGENT, request, listener) {
 

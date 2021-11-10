@@ -46,6 +46,7 @@ import org.elasticsearch.test.transport.MockTransportService;
 import org.elasticsearch.transport.MockTcpTransportPlugin;
 import org.elasticsearch.transport.Netty4Plugin;
 import org.elasticsearch.transport.TransportService;
+import org.hamcrest.core.Is;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -240,17 +241,38 @@ public class LogicalReplicationITest extends ESTestCase {
         );
     }
 
+//    @Test
+//    public void test_create_publication_check_owner_was_not_deleted_before_creation() {
+//        executeOnPublisher("CREATE TABLE doc.t1 (id INT)");
+//
+//        String publicationOwner = "publicationOwner";
+//        executeOnPublisher("CREATE USER " + publicationOwner);
+//        UserLookup userLookup = publisherCluster.getInstance(UserLookup.class);
+//        User user = userLookup.findUser(publicationOwner);
+//
+//        executeOnPublisher("DROP USER " + publicationOwner);
+//        executeOnPublisherAsUser("CREATE PUBLICATION pub1 FOR TABLE doc.t1", user);
+//    }
+
     @Test
     public void test_create_publication_check_owner_was_not_deleted_before_creation() {
         executeOnPublisher("CREATE TABLE doc.t1 (id INT)");
 
         String publicationOwner = "publicationOwner";
         executeOnPublisher("CREATE USER " + publicationOwner);
+
+        SQLResponse response = executeOnPublisher("select * from sys.users where name = 'publicationOwner'");
+        assertThat(printedTable(response.rows()),
+            is("-119974068| pub1| -450373579| false| doc| t1| true| true| true\n"));
+
         UserLookup userLookup = publisherCluster.getInstance(UserLookup.class);
         User user = userLookup.findUser(publicationOwner);
 
-        executeOnPublisher("DROP USER " + publicationOwner);
         executeOnPublisherAsUser("CREATE PUBLICATION pub1 FOR TABLE doc.t1", user);
+        assertThrows(
+            "User 'publicationOwner' cannot be dropped. Publication 'pub1' needs to be dropped first.",
+            IllegalStateException.class,
+            () -> executeOnPublisher("DROP USER " + publicationOwner));
     }
 
     @Test
@@ -462,7 +484,9 @@ public class LogicalReplicationITest extends ESTestCase {
         } else {
             executeOnPublisher("CREATE PUBLICATION " + pub + " FOR TABLE " + tablesAsString);
         }
-        executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        SQLResponse response = executeOnPublisher("CREATE USER " + SUBSCRIBING_USER);
+        assertThat(printedTable(response.rows()),
+            is("-119974068| pub1| -450373579| false| doc| t1| true| true| true\n"));
         executeOnPublisher("GRANT DQL ON TABLE " + tablesAsString + " TO " + SUBSCRIBING_USER);
     }
 }
