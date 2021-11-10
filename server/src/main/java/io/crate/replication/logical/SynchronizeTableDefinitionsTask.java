@@ -48,6 +48,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static io.crate.replication.logical.repository.LogicalReplicationRepository.REMOTE_CLUSTER_REPO_REQ_TIMEOUT_IN_MILLI_SEC;
@@ -105,7 +106,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
 
     public synchronized boolean addSubscriptions(String subscriptionName) {
         var updated = subscriptionsToTrack.add(subscriptionName);
-        if (updated && !isActive) {
+        if (updated && isActive == false) {
             start();
         }
         return updated;
@@ -124,27 +125,17 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("Start syncing table definitions for subscription {}", subscriptionName);
             }
-            getRemoteClusterState(subscriptionName, new ActionListener<>() {
-                @Override
-                public void onResponse(ClusterState remoteClusterState) {
-                    clusterService.submitStateUpdateTask("track-metadata-changes", new ClusterStateUpdateTask() {
-
-                        @Override
-                        public ClusterState execute(ClusterState localClusterState) throws Exception {
-                            return syncMappings(subscriptionName, localClusterState, remoteClusterState);
-                        }
-
-                        @Override
-                        public void onFailure(String source, Exception e) {
-                            LOGGER.error(e);
-                        }
-                    });
-                }
-
-                @Override
-                public void onFailure(Exception e) {
-                    LOGGER.error(e);
-                }
+            getRemoteClusterState(subscriptionName, remoteClusterState -> {
+                clusterService.submitStateUpdateTask("track-metadata-changes", new ClusterStateUpdateTask() {
+                    @Override
+                    public ClusterState execute(ClusterState localClusterState) throws Exception {
+                        return syncMappings(subscriptionName, localClusterState, remoteClusterState);
+                    }
+                    @Override
+                    public void onFailure(String source, Exception e) {
+                        LOGGER.error(e);
+                    }
+                });
             });
         }
         schedule();
@@ -193,7 +184,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
         }
         if (mappingsChanged) {
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.trace("Updated index metadata from remote clusterr");
+                LOGGER.debug("Updated index metadata for subscription {}", subscriptionName);
             }
             return ClusterState.builder(localClusterState).metadata(metadataBuilder).build();
         } else {
@@ -201,7 +192,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
         }
     }
 
-    private void getRemoteClusterState(String subscriptionName, ActionListener<ClusterState> listener) {
+    private void getRemoteClusterState(String subscriptionName, Consumer<ClusterState> consumer) {
         var client = remoteClient.apply(subscriptionName);
 
         var clusterStateRequest = client.admin().cluster().prepareState()
@@ -212,12 +203,12 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
             ClusterStateAction.INSTANCE, clusterStateRequest, new ActionListener<>() {
                 @Override
                 public void onResponse(ClusterStateResponse clusterStateResponse) {
-                    listener.onResponse(clusterStateResponse.getState());
+                    consumer.accept(clusterStateResponse.getState());
                 }
 
                 @Override
                 public void onFailure(Exception e) {
-                    listener.onFailure(e);
+                    LOGGER.error(e);
                 }
             });
     }
