@@ -24,8 +24,8 @@ package io.crate.replication.logical;
 import io.crate.common.annotations.VisibleForTesting;
 import io.crate.common.unit.TimeValue;
 import io.crate.metadata.RelationName;
-import io.crate.replication.logical.metadata.Publication;
 import io.crate.replication.logical.metadata.PublicationsMetadata;
+import io.crate.replication.logical.metadata.Subscription;
 import io.crate.replication.logical.metadata.SubscriptionsMetadata;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
@@ -46,7 +46,6 @@ import org.elasticsearch.threadpool.ThreadPool;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
@@ -97,7 +96,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
         return subscriptionsToTrack.add(subscriptionName);
     }
 
-    public synchronized boolean removeRemoteClusterToTrack(String subscriptionName) {
+    public synchronized boolean removeSubscriptionsToTrack(String subscriptionName) {
         return subscriptionsToTrack.remove(subscriptionName);
     }
 
@@ -118,7 +117,7 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
 
                             @Override
                             public ClusterState execute(ClusterState localClusterState) throws Exception {
-                                return syncMappings(localClusterState, remoteClusterState);
+                                return syncMappings(subscriptionName, localClusterState, remoteClusterState);
                             }
 
                             @Override
@@ -143,17 +142,24 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
     }
 
     @VisibleForTesting
-    static ClusterState syncMappings(ClusterState localClusterState, ClusterState remoteClusterState) {
+    static ClusterState syncMappings(String subscriptionName, ClusterState localClusterState, ClusterState remoteClusterState) {
         PublicationsMetadata publicationsMetadata = remoteClusterState.metadata().custom(PublicationsMetadata.TYPE);
         SubscriptionsMetadata subscriptionsMetadata = localClusterState.metadata().custom(SubscriptionsMetadata.TYPE);
-        // Find all subscribed tables
+        if (publicationsMetadata == null && subscriptionsMetadata == null) {
+            return localClusterState;
+        }
         var subscribedTables = new HashSet<RelationName>();
-        for (var subscription : subscriptionsMetadata.subscription().values()) {
+        Subscription subscription = subscriptionsMetadata.subscription().get(subscriptionName);
+        if (subscription != null) {
             for (var publicationName : subscription.publications()) {
-                var publication = publicationsMetadata.publications().get(publicationName);
-                subscribedTables.addAll(publication.tables());
+                var publications = publicationsMetadata.publications();
+                if (publications != null) {
+                    var publication = publications.get(publicationName);
+                    subscribedTables.addAll(publication.tables());
+                }
             }
         }
+
         // Check for all the subscribed tables if the index metadata changed and apply
         // the changes from the publisher cluster state to the subscriber cluster state
         var metadataBuilder = Metadata.builder(localClusterState.metadata());
@@ -161,15 +167,17 @@ public final class SynchronizeTableDefinitionsTask implements Closeable {
         for (var followedTable : subscribedTables) {
             var remoteIndexMetadata = remoteClusterState.metadata().index(followedTable.indexNameOrAlias());
             var localIndexMetadata = localClusterState.metadata().index(followedTable.indexNameOrAlias());
-            var remoteMapping = remoteIndexMetadata.mapping();
-            var localMapping = localIndexMetadata.mapping();
-            if (remoteMapping != null && localMapping != null) {
-                if (!remoteMapping.equals(localMapping)) {
-                    if (remoteIndexMetadata.getMappingVersion() > localIndexMetadata.getMappingVersion()) {
-                        var indexMetadataBuilder = IndexMetadata.builder(localIndexMetadata).putMapping(
-                            remoteMapping).mappingVersion(remoteIndexMetadata.getMappingVersion());
-                        metadataBuilder.put(indexMetadataBuilder.build(), true);
-                        mappingsChanged = true;
+            if (remoteIndexMetadata != null && localIndexMetadata != null) {
+                var remoteMapping = remoteIndexMetadata.mapping();
+                var localMapping = localIndexMetadata.mapping();
+                if (remoteMapping != null && localMapping != null) {
+                    if (!remoteMapping.equals(localMapping)) {
+                        if (remoteIndexMetadata.getMappingVersion() > localIndexMetadata.getMappingVersion()) {
+                            var indexMetadataBuilder = IndexMetadata.builder(localIndexMetadata).putMapping(
+                                remoteMapping).mappingVersion(remoteIndexMetadata.getMappingVersion());
+                            metadataBuilder.put(indexMetadataBuilder.build(), true);
+                            mappingsChanged = true;
+                        }
                     }
                 }
             }

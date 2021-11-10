@@ -79,19 +79,19 @@ public class SynchronizeTableDefinitionsTest extends ESTestCase {
             .metadata(Metadata.builder().put(indexMetadata, true).putCustom(SubscriptionsMetadata.TYPE, subscriptionsMetadata).build())
             .build();
 
-        var syncedSubriberClusterState = SynchronizeTableDefinitionsTask.syncMappings(subscriberClusterState, publisherClusterState);
+        var syncedSubriberClusterState = SynchronizeTableDefinitionsTask.syncMappings("sub1", subscriberClusterState, publisherClusterState);
         // Nothing in the indexMetadata changed, so the clusterstate must be equal
         assertThat(subscriberClusterState, is(syncedSubriberClusterState));
 
 
         //Now lets change the mapping on the publisher publisherClusterState
         var updatedMappingMetadata = new MappingMetadata("test", Map.of("1", "one", "2", "two"));
-        var updatedIndexMetadata = IndexMetadata.builder(indexMetadata).putMapping(updatedMappingMetadata).version(2).build();
+        var updatedIndexMetadata = IndexMetadata.builder(indexMetadata).putMapping(updatedMappingMetadata).mappingVersion(2L).build();
         var updatedPublisherClusterState = ClusterState.builder(publisherClusterState).metadata(Metadata.builder().put(
             updatedIndexMetadata,
             true).putCustom(PublicationsMetadata.TYPE, publicationsMetadata).build()).build();
 
-        syncedSubriberClusterState = SynchronizeTableDefinitionsTask.syncMappings(subscriberClusterState, updatedPublisherClusterState);
+        syncedSubriberClusterState = SynchronizeTableDefinitionsTask.syncMappings("sub1", subscriberClusterState, updatedPublisherClusterState);
 
         assertThat(subscriberClusterState, is(not(syncedSubriberClusterState)));
 
